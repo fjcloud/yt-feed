@@ -1,408 +1,240 @@
-// Application state
-let followedChannelIds = [];
-let apiKey = '';
-let isLoading = false;
-let watchedVideos = new Set();
+import YouTubeFetcher from './yt.js';
 
-// Storage constants (persistent)
-const STORAGE_KEYS = {
-    API_KEY: 'youtube_api_key',        // Never expires
-    CHANNEL_IDS: 'channel_ids',        // Never expires
-    WATCHED_VIDEOS: 'watched_videos'    // Never expires
-};
-
-// Cache constants (temporary)
-const CACHE_KEYS = {
-    FEED: 'feed_cache',                // Expires after 1 hour
-    TIMESTAMP: 'feed_cache_timestamp'  // Expires after 1 hour
-};
-const CACHE_DURATION = 60 * 60 * 1000; // 1 hour in milliseconds
-
-// Initialize application
-document.addEventListener('DOMContentLoaded', () => {
-    loadStoredData();
-    setupEventListeners();
-    checkAndSetView();
-});
-
-// Event Listeners
-function setupEventListeners() {
-    document.getElementById('searchInput')?.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') searchChannels();
-    });
-
-    document.querySelectorAll('[data-view]').forEach(element => {
-        element.addEventListener('click', (e) => {
-            e.preventDefault();
-            switchView(e.target.dataset.view);
-        });
-    });
-
-    document.getElementById('refreshFeed')?.addEventListener('click', () => {
-        clearFeedCache();
-        fetchLatestVideos(true);
-    });
-}
-
-// View Management
-function checkAndSetView() {
-    const view = new URLSearchParams(window.location.search).get('view') || 'dashboard';
-    switchView(view);
-}
-
-function switchView(view) {
-    document.querySelectorAll('.view-section').forEach(section => {
-        section.style.display = 'none';
-    });
-
-    const selectedSection = document.getElementById(view);
-    if (selectedSection) {
-        selectedSection.style.display = 'block';
-    }
-
-    const url = new URL(window.location);
-    url.searchParams.set('view', view);
-    window.history.pushState({}, '', url);
-
-    if (view === 'dashboard') {
-        fetchLatestVideos();
-    } else if (view === 'settings') {
-        displayFollowedChannels();
-    }
-}
-
-// Cache Management
-function getFeedCache() {
-    try {
-        const cache = localStorage.getItem(CACHE_KEYS.FEED);
-        const timestamp = localStorage.getItem(CACHE_KEYS.TIMESTAMP);
+class YouTubeApp {
+    constructor() {
+        this.ytFetcher = new YouTubeFetcher();
+        this.channels = this.loadChannels();
+        this.videos = [];
+        this.currentView = 'dashboard';
+        this.searchResults = [];
+        this.isSearching = false;
         
-        if (!cache || !timestamp) return null;
+        this.initializeElements();
+        this.initializeEventListeners();
+        this.refreshAllFeeds();
+    }
 
-        const now = Date.now();
-        if (now - parseInt(timestamp) > CACHE_DURATION) {
-            clearFeedCache();
-            return null;
+    initializeElements() {
+        this.dashboardView = document.getElementById('dashboard-view');
+        this.settingsView = document.getElementById('settings-view');
+        this.videosList = document.getElementById('videos-list');
+        this.channelInput = document.getElementById('channel-input');
+        this.channelsList = document.getElementById('channels-list');
+        this.searchResults = document.getElementById('search-results');
+        this.dashboardButton = document.getElementById('dashboard-button');
+        this.settingsButton = document.getElementById('settings-button');
+    }
+
+    initializeEventListeners() {
+        this.dashboardButton.addEventListener('click', () => this.switchView('dashboard'));
+        this.settingsButton.addEventListener('click', () => this.switchView('settings'));
+        
+        let searchTimeout;
+        this.channelInput.addEventListener('input', (e) => {
+            clearTimeout(searchTimeout);
+            const query = e.target.value.trim();
+            if (query) {
+                searchTimeout = setTimeout(() => this.searchChannels(query), 500);
+            } else {
+                this.clearSearchResults();
+            }
+        });
+
+        document.getElementById('refresh-button').addEventListener('click', () => {
+            this.refreshAllFeeds();
+        });
+    }
+
+    loadChannels() {
+        const savedChannels = localStorage.getItem('youtube-channels');
+        return savedChannels ? JSON.parse(savedChannels) : [];
+    }
+
+    saveChannels() {
+        localStorage.setItem('youtube-channels', JSON.stringify(this.channels));
+    }
+
+    switchView(view) {
+        this.currentView = view;
+        this.dashboardView.classList.toggle('hidden', view !== 'dashboard');
+        this.settingsView.classList.toggle('hidden', view !== 'settings');
+
+        if (view === 'dashboard') {
+            this.refreshAllFeeds();
+        } else if (view === 'settings') {
+            this.renderChannelsList();
+        }
+    }
+
+    async searchChannels(query) {
+        try {
+            this.isSearching = true;
+            this.searchResults.innerHTML = '<div class="loading">Searching...</div>';
+            
+            const results = await this.ytFetcher.performChannelSearch(query);
+            this.renderSearchResults(results);
+        } catch (error) {
+            this.searchResults.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+        } finally {
+            this.isSearching = false;
+        }
+    }
+
+    renderSearchResults(results) {
+        if (results.length === 0) {
+            this.searchResults.innerHTML = '<div class="text-gray-500 p-4">No channels found</div>';
+            return;
         }
 
-        return JSON.parse(cache);
-    } catch (error) {
-        console.error('Error reading cache:', error);
-        return null;
-    }
-}
-
-function setFeedCache(videos) {
-    try {
-        localStorage.setItem(CACHE_KEYS.FEED, JSON.stringify(videos));
-        localStorage.setItem(CACHE_KEYS.TIMESTAMP, Date.now().toString());
-    } catch (error) {
-        console.error('Error setting cache:', error);
-    }
-}
-
-function clearFeedCache() {
-    localStorage.removeItem(CACHE_KEYS.FEED);
-    localStorage.removeItem(CACHE_KEYS.TIMESTAMP);
-}
-
-// Storage Management
-function loadStoredData() {
-    // Load persistent data
-    apiKey = localStorage.getItem(STORAGE_KEYS.API_KEY) || '';
-    if (apiKey) {
-        document.getElementById('apiKey').value = apiKey;
+        this.searchResults.innerHTML = results.map(channel => `
+            <div class="channel-result p-4 hover:bg-gray-50 cursor-pointer flex items-center gap-4">
+                ${channel.thumbnailUrl ? 
+                    `<img src="${channel.thumbnailUrl}" alt="${channel.channelName}" class="w-12 h-12 rounded-full">` :
+                    '<div class="w-12 h-12 rounded-full bg-gray-200"></div>'
+                }
+                <div class="flex-1">
+                    <div class="font-medium">${channel.channelName}</div>
+                    <div class="text-sm text-gray-500">${channel.subscriberCount}</div>
+                </div>
+                <button onclick="app.addChannel('${channel.channelId}', '${channel.channelName.replace(/'/g, "\\'")}')"
+                        class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700">
+                    Add
+                </button>
+            </div>
+        `).join('');
     }
 
-    const savedChannels = localStorage.getItem(STORAGE_KEYS.CHANNEL_IDS);
-    if (savedChannels) {
-        followedChannelIds = JSON.parse(savedChannels);
-        displayFollowedChannels();
+    clearSearchResults() {
+        this.searchResults.innerHTML = '';
     }
 
-    const savedWatched = localStorage.getItem(STORAGE_KEYS.WATCHED_VIDEOS);
-    if (savedWatched) {
-        watchedVideos = new Set(JSON.parse(savedWatched));
-    }
-}
-
-function saveApiKey() {
-    const newApiKey = document.getElementById('apiKey').value.trim();
-    if (!newApiKey) {
-        showError('API key cannot be empty');
-        return;
-    }
-    
-    apiKey = newApiKey;
-    localStorage.setItem(STORAGE_KEYS.API_KEY, apiKey);
-    showError('API key saved successfully!', 3000);
-}
-
-// UI Feedback
-function showError(message, duration = 5000) {
-    const container = document.querySelector('.container');
-    const existingError = container.querySelector('.error');
-    if (existingError) {
-        existingError.remove();
-    }
-
-    const errorDiv = document.createElement('div');
-    errorDiv.className = 'error';
-    errorDiv.textContent = message;
-    container.insertBefore(errorDiv, container.firstChild);
-
-    if (duration) {
-        setTimeout(() => errorDiv.remove(), duration);
-    }
-}
-
-function setLoading(loading) {
-    isLoading = loading;
-    document.querySelectorAll('button').forEach(button => {
-        button.disabled = loading;
-    });
-}
-
-// Channel Management
-async function searchChannels() {
-    if (!apiKey) {
-        showError('Please configure your API key first');
-        return;
-    }
-
-    const searchQuery = document.getElementById('searchInput').value.trim();
-    if (!searchQuery) {
-        showError('Please enter a search term');
-        return;
-    }
-
-    setLoading(true);
-    try {
-        const response = await fetch(
-            `https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(searchQuery)}&key=${apiKey}`
-        );
-        const data = await response.json();
-
-        if (data.error) {
-            throw new Error(data.error.message);
+    addChannel(channelId, channelName) {
+        if (this.channels.some(ch => ch.channelId === channelId)) {
+            alert('Channel already added!');
+            return;
         }
 
-        displaySearchResults(data.items || []);
-    } catch (error) {
-        showError(`Error: ${error.message}`);
-    } finally {
-        setLoading(false);
-    }
-}
-
-function followChannel(channelId) {
-    if (followedChannelIds.includes(channelId)) {
-        showError('Already following this channel');
-        return;
+        this.channels.push({ channelId, channelName });
+        this.saveChannels();
+        this.renderChannelsList();
+        this.channelInput.value = '';
+        this.clearSearchResults();
     }
 
-    followedChannelIds.push(channelId);
-    localStorage.setItem(STORAGE_KEYS.CHANNEL_IDS, JSON.stringify(followedChannelIds));
-    clearFeedCache();
-    displayFollowedChannels();
-    showError('Channel added successfully!', 3000);
-}
-
-function unfollowChannel(channelId) {
-    followedChannelIds = followedChannelIds.filter(id => id !== channelId);
-    localStorage.setItem(STORAGE_KEYS.CHANNEL_IDS, JSON.stringify(followedChannelIds));
-    clearFeedCache();
-    displayFollowedChannels();
-}
-
-async function displayFollowedChannels() {
-    const followedChannelsDiv = document.getElementById('followedChannels');
-    
-    if (followedChannelIds.length === 0) {
-        followedChannelsDiv.innerHTML = '<p class="no-content">No channels followed</p>';
-        return;
+    removeChannel(channelId) {
+        this.channels = this.channels.filter(ch => ch.channelId !== channelId);
+        this.saveChannels();
+        this.renderChannelsList();
     }
 
-    setLoading(true);
-    try {
-        const response = await fetch(
-            `https://www.googleapis.com/youtube/v3/channels?part=snippet&id=${followedChannelIds.join(',')}&key=${apiKey}`
-        );
-        const data = await response.json();
-
-        if (data.error) {
-            throw new Error(data.error.message);
+    renderChannelsList() {
+        if (this.channels.length === 0) {
+            this.channelsList.innerHTML = `
+                <div class="text-gray-500 text-center p-8">
+                    No channels added yet. Search for channels above!
+                </div>
+            `;
+            return;
         }
 
-        followedChannelsDiv.innerHTML = data.items.map(channel => `
-            <div class="channel-item">
-                <img src="${channel.snippet.thumbnails.default.url}" 
-                     alt="${channel.snippet.title}" 
-                     style="width: 50px; height: 50px; border-radius: 50%;">
-                <div class="channel-info">
-                    <h3>${channel.snippet.title}</h3>
-                    <button onclick="unfollowChannel('${channel.id}')" 
-                            style="background: #dc3545;">
-                        Unfollow
+        this.channelsList.innerHTML = this.channels.map(channel => `
+            <div class="channel-item bg-white p-4 rounded-lg shadow-sm flex items-center justify-between">
+                <div class="flex-1">
+                    <h3 class="font-medium">${channel.channelName}</h3>
+                    <p class="text-sm text-gray-500">ID: ${channel.channelId}</p>
+                </div>
+                <button onclick="app.removeChannel('${channel.channelId}')"
+                        class="text-red-600 hover:text-red-800 focus:outline-none">
+                    Remove
+                </button>
+            </div>
+        `).join('');
+    }
+
+    openVideo(videoId) {
+        const embedUrl = `https://www.youtube.com/embed/${videoId}?rel=0&autoplay=1`;
+        window.open(embedUrl, '_blank');
+    }
+
+    async refreshAllFeeds() {
+        if (this.currentView !== 'dashboard') return;
+
+        try {
+            this.videosList.innerHTML = this.loadingTemplate();
+            
+            const allVideos = await Promise.all(
+                this.channels.map(async channel => {
+                    try {
+                        const videos = await this.ytFetcher.getChannelFeed(channel.channelId);
+                        return videos.map(video => ({
+                            ...video,
+                            channelName: channel.channelName
+                        }));
+                    } catch (error) {
+                        console.error(`Error fetching ${channel.channelName}:`, error);
+                        return [];
+                    }
+                })
+            );
+
+            this.videos = allVideos
+                .flat()
+                .sort((a, b) => b.publishedDate - a.publishedDate);
+
+            this.renderVideosList();
+        } catch (error) {
+            this.videosList.innerHTML = `
+                <div class="error-state">
+                    <p>Error loading feeds: ${error.message}</p>
+                    <button onclick="app.refreshAllFeeds()" 
+                            class="retry-button">
+                        Try Again
                     </button>
+                </div>`;
+        }
+    }
+
+    renderVideosList() {
+        if (this.videos.length === 0) {
+            this.videosList.innerHTML = `
+                <div class="empty-state">
+                    <p>No videos found. Add some channels in settings!</p>
+                    <button onclick="app.switchView('settings')" 
+                            class="add-channels-button">
+                        Add Channels
+                    </button>
+                </div>`;
+            return;
+        }
+
+        this.videosList.innerHTML = this.videos.map(video => `
+            <div class="video-card bg-white rounded-lg shadow-sm overflow-hidden">
+                <div class="aspect-w-16 aspect-h-9 cursor-pointer"
+                     onclick="app.openVideo('${video.videoId}')">
+                    <img src="${video.thumbnail}" 
+                         alt="${video.title}"
+                         class="video-thumbnail">
+                </div>
+                <div class="video-info p-4">
+                    <h3 class="video-title font-medium line-clamp-2">${video.title}</h3>
+                    <p class="channel-name text-sm text-gray-600 mt-2">${video.channelName}</p>
+                    <p class="publish-date text-sm text-gray-500 mt-1">
+                        ${new Date(video.publishedDate).toLocaleDateString()}
+                    </p>
                 </div>
             </div>
         `).join('');
-    } catch (error) {
-        showError(`Error loading channels: ${error.message}`);
-        followedChannelsDiv.innerHTML = '<p class="error">Error loading channels</p>';
-    } finally {
-        setLoading(false);
-    }
-}
-
-// Video Management
-async function fetchLatestVideos(forceRefresh = false) {
-    if (!apiKey) {
-        showError('Please configure your API key first');
-        return;
     }
 
-    if (followedChannelIds.length === 0) {
-        showError('No channels followed');
-        return;
-    }
-
-    if (!forceRefresh) {
-        const cachedVideos = getFeedCache();
-        if (cachedVideos) {
-            displayVideos(cachedVideos);
-            return;
-        }
-    }
-
-    setLoading(true);
-    const allVideos = [];
-    const errors = [];
-
-    try {
-        for (const channelId of followedChannelIds) {
-            try {
-                // Fetch medium videos (4-20 minutes)
-                const mediumResponse = await fetch(
-                    `https://www.googleapis.com/youtube/v3/search?part=snippet` +
-                    `&channelId=${channelId}` +
-                    `&order=date` +
-                    `&maxResults=5` +
-                    `&type=video` +
-                    `&videoDuration=medium` +
-                    `&key=${apiKey}`
-                );
-                
-                const mediumData = await mediumResponse.json();
-
-                // Fetch long videos (>20 minutes)
-                const longResponse = await fetch(
-                    `https://www.googleapis.com/youtube/v3/search?part=snippet` +
-                    `&channelId=${channelId}` +
-                    `&order=date` +
-                    `&maxResults=5` +
-                    `&type=video` +
-                    `&videoDuration=long` +
-                    `&key=${apiKey}`
-                );
-
-                const longData = await longResponse.json();
-
-                if (mediumData.error) {
-                    errors.push(`Channel ${channelId} (medium): ${mediumData.error.message}`);
-                }
-
-                if (longData.error) {
-                    errors.push(`Channel ${channelId} (long): ${longData.error.message}`);
-                }
-
-                if (mediumData.items) allVideos.push(...mediumData.items);
-                if (longData.items) allVideos.push(...longData.items);
-
-            } catch (error) {
-                errors.push(`Channel ${channelId}: ${error.message}`);
-            }
-        }
-
-        if (errors.length > 0) {
-            showError(`Errors: ${errors.join(', ')}`, 10000);
-        }
-
-        if (allVideos.length > 0) {
-            allVideos.sort((a, b) => 
-                new Date(b.snippet.publishedAt) - new Date(a.snippet.publishedAt)
-            );
-            setFeedCache(allVideos);
-            displayVideos(allVideos);
-        } else {
-            showError('No videos found');
-        }
-    } catch (error) {
-        showError(`Error: ${error.message}`);
-    } finally {
-        setLoading(false);
-    }
-}
-
-function markVideoAsWatched(videoId) {
-    watchedVideos.add(videoId);
-    localStorage.setItem(STORAGE_KEYS.WATCHED_VIDEOS, JSON.stringify([...watchedVideos]));
-    const videoElement = document.querySelector(`[data-video-id="${videoId}"]`);
-    if (videoElement) {
-        videoElement.classList.add('watched');
-    }
-}
-
-// Display Functions
-function displaySearchResults(channels) {
-    const searchResults = document.getElementById('searchResults');
-    searchResults.innerHTML = channels.map(channel => {
-        const isFollowed = followedChannelIds.includes(channel.id.channelId);
+    loadingTemplate() {
         return `
-            <div class="channel-item">
-                <img src="${channel.snippet.thumbnails.default.url}" 
-                     alt="${channel.snippet.title}" 
-                     style="width: 50px; height: 50px; border-radius: 50%;">
-                <div class="channel-info">
-                    <h3>${channel.snippet.title}</h3>
-                    <button onclick="followChannel('${channel.id.channelId}')" 
-                            ${isFollowed ? 'disabled' : ''}>
-                        ${isFollowed ? 'Already following' : 'Follow'}
-                    </button>
-                </div>
+            <div class="loading-state flex items-center justify-center py-12">
+                <div class="animate-spin rounded-full h-12 w-12 border-4 border-red-600 border-t-transparent"></div>
+                <p class="ml-4 text-gray-600">Loading your feeds...</p>
             </div>
         `;
-    }).join('');
-}
-
-function displayVideos(videos) {
-    const videoResults = document.getElementById('videoResults');
-    videoResults.innerHTML = videos.map(video => {
-        const isWatched = watchedVideos.has(video.id.videoId);
-        return `
-            <div class="video-item ${isWatched ? 'watched' : ''}" 
-                 data-video-id="${video.id.videoId}"
-                 onclick="handleVideoClick('${video.id.videoId}')" 
-                 style="cursor: pointer;">
-                <img src="${video.snippet.thumbnails.medium.url}" 
-                     alt="${video.snippet.title}">
-                <h3>${video.snippet.title}</h3>
-                <p>by ${video.snippet.channelTitle}</p>
-                <p>${new Date(video.snippet.publishedAt).toLocaleDateString()}</p>
-                ${isWatched ? '<span class="watched-badge">Watched</span>' : ''}
-            </div>
-        `;
-    }).join('');
-
-    const cacheTimestamp = localStorage.getItem(CACHE_KEYS.TIMESTAMP);
-    if (cacheTimestamp) {
-        const date = new Date(parseInt(cacheTimestamp));
-        document.getElementById('lastUpdate').textContent = `Last updated: ${date.toLocaleString()}`;
     }
 }
 
-function handleVideoClick(videoId) {
-    markVideoAsWatched(videoId);
-    window.open(`https://www.youtube.com/embed/${videoId}?rel=0&autoplay=1`, '_blank');
-}
+const app = new YouTubeApp();
+export default app;

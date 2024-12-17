@@ -3,262 +3,167 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>YouTube Custom Feed</title>
+    <title>YouTube Feed Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
     <style>
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
-
-        body {
-            font-family: Arial, sans-serif;
-            line-height: 1.6;
-            background: #f5f5f5;
-            color: #333;
-        }
-
-        .nav {
-            background: #fff;
-            padding: 1rem;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            position: sticky;
-            top: 0;
-            z-index: 100;
-        }
-
-        .nav-buttons {
-            max-width: 1200px;
-            margin: 0 auto;
-            display: flex;
-            gap: 1rem;
-        }
-
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-
-        .card {
-            background: white;
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-
-        .input-group {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 15px;
-        }
-
-        input {
-            padding: 12px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            flex: 1;
-            font-size: 14px;
-        }
-
-        button {
-            padding: 8px 16px;
-            background: #1a73e8;
-            color: white;
-            border: none;
-            border-radius: 4px;
+        .video-card {
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
             cursor: pointer;
-            font-size: 14px;
-            transition: background 0.3s ease;
         }
-
-        button:hover {
-            background: #1557b0;
-        }
-
-        button:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-        }
-
-        .channel-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-            gap: 20px;
-            margin-top: 20px;
-        }
-
-        .video-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-            gap: 20px;
-        }
-
-        .channel-item {
-            background: white;
-            border-radius: 8px;
-            padding: 15px;
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            transition: transform 0.2s ease;
-        }
-
-        .channel-item:hover {
+        .video-card:hover {
             transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
         }
-
-        .channel-info {
-            flex: 1;
+        .video-thumbnail {
+            aspect-ratio: 16/9;
+            object-fit: cover;
+            width: 100%;
         }
-
-        .video-item {
-            background: white;
-            border-radius: 8px;
-            padding: 15px;
-            transition: all 0.2s ease;
+        .hidden {
+            display: none !important;
+        }
+        .line-clamp-2 {
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
             overflow: hidden;
         }
-
-        .video-item:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        .channel-result:last-child {
+            border-bottom: none;
         }
-
-        .video-item img {
-            width: 100%;
-            border-radius: 8px;
-            margin-bottom: 10px;
+        .loading-pulse {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
         }
-
-        .video-item h3 {
-            margin: 10px 0;
-            font-size: 16px;
-            line-height: 1.4;
-        }
-
-        .video-item p {
-            color: #666;
-            font-size: 14px;
-            margin: 5px 0;
-        }
-
-        .error {
-            background: #ffebee;
-            color: #c62828;
-            padding: 15px;
-            border-radius: 4px;
-            margin-bottom: 15px;
-            animation: fadeIn 0.3s ease;
-        }
-
-        .loading {
-            text-align: center;
-            padding: 20px;
-            color: #666;
-        }
-
-        .watched {
-            position: relative;
-        }
-
-        .watched img {
-            opacity: 0.7;
-        }
-
-        .watched-badge {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            background: rgba(0, 0, 0, 0.7);
-            color: white;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 12px;
-        }
-
-        .no-content {
-            text-align: center;
-            color: #666;
-            padding: 20px;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(-10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        /* Responsive adjustments */
-        @media (max-width: 768px) {
-            .container {
-                padding: 10px;
-            }
-
-            .video-grid, .channel-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .input-group {
-                flex-direction: column;
-            }
-
-            .input-group button {
-                width: 100%;
-            }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: .5; }
         }
     </style>
 </head>
-<body>
-    <!-- Navigation -->
-    <nav class="nav">
-        <div class="nav-buttons">
-            <button data-view="dashboard">Dashboard</button>
-            <button data-view="settings">Settings</button>
+<body class="bg-gray-50 min-h-screen font-sans">
+    <!-- Navigation Bar -->
+    <nav class="bg-white shadow-sm fixed w-full z-10">
+        <div class="max-w-7xl mx-auto px-4">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <span class="text-red-600 text-xl font-semibold">YT Feed</span>
+                </div>
+                <div class="flex space-x-1">
+                    <button id="dashboard-button" 
+                            class="px-4 py-2 text-gray-700 hover:bg-gray-50 rounded-md transition-colors">
+                        Dashboard
+                    </button>
+                    <button id="settings-button"
+                            class="px-4 py-2 text-gray-700 hover:bg-gray-50 rounded-md transition-colors">
+                        Settings
+                    </button>
+                </div>
+            </div>
         </div>
     </nav>
 
-    <div class="container">
+    <!-- Main Content (with top padding for fixed nav) -->
+    <main class="pt-16">
         <!-- Dashboard View -->
-        <div id="dashboard" class="view-section">
-            <div id="videoResults" class="video-grid">
-                <!-- Videos will be displayed here -->
+        <div id="dashboard-view" class="max-w-7xl mx-auto px-4 py-8">
+            <div class="flex justify-between items-center mb-8">
+                <h1 class="text-2xl font-semibold text-gray-800">Latest Videos</h1>
+                <button id="refresh-button" 
+                        class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50">
+                    Refresh Feeds
+                </button>
+            </div>
+            
+            <!-- Videos Grid -->
+            <div id="videos-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <!-- Videos will be inserted here by JavaScript -->
             </div>
         </div>
 
         <!-- Settings View -->
-        <div id="settings" class="view-section">
-            <!-- API Configuration -->
-            <div class="card">
-                <h2>YouTube API Configuration</h2>
-                <div class="input-group">
-                    <input type="password" id="apiKey" placeholder="Enter your YouTube API key">
-                    <button onclick="saveApiKey()">Save API Key</button>
+        <div id="settings-view" class="hidden max-w-3xl mx-auto px-4 py-8">
+            <div class="bg-white rounded-xl shadow-sm p-6">
+                <h2 class="text-2xl font-semibold text-gray-800 mb-6">Channel Management</h2>
+                
+                <!-- Search Section -->
+                <div class="mb-8">
+                    <label for="channel-input" class="block text-sm font-medium text-gray-700 mb-2">
+                        Search YouTube Channels
+                    </label>
+                    <input type="text" 
+                           id="channel-input"
+                           placeholder="Enter channel name or paste YouTube URL" 
+                           class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-shadow"
+                           autocomplete="off">
+                    
+                    <!-- Search Results -->
+                    <div id="search-results" class="mt-2 bg-white border border-gray-200 rounded-lg divide-y divide-gray-100">
+                        <!-- Search results will be inserted here -->
+                    </div>
                 </div>
-            </div>
 
-            <!-- Channel Search -->
-            <div class="card">
-                <h2>Search Channels</h2>
-                <div class="input-group">
-                    <input type="text" id="searchInput" placeholder="Channel name">
-                    <button onclick="searchChannels()">Search</button>
-                </div>
-                <div id="searchResults" class="channel-grid">
-                    <!-- Search results will be displayed here -->
-                </div>
-            </div>
-
-            <!-- Followed Channels -->
-            <div class="card">
-                <h2>Followed Channels</h2>
-                <div id="followedChannels" class="channel-grid">
-                    <!-- Followed channels will be displayed here -->
+                <!-- Channels List -->
+                <div>
+                    <h3 class="text-lg font-medium text-gray-800 mb-4">Your Channels</h3>
+                    <div id="channels-list" class="space-y-3">
+                        <!-- Channels will be inserted here -->
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
 
-    <script src="app.js"></script>
+        <!-- Focus Mode View -->
+        <div id="focus-view" class="hidden fixed inset-0 bg-black bg-opacity-90 z-50">
+            <div class="h-full flex flex-col">
+                <!-- Video Header -->
+                <div class="bg-black bg-opacity-50 p-4 flex items-center justify-between">
+                    <div class="text-white">
+                        <h2 id="focus-title" class="text-xl font-medium"></h2>
+                        <div class="flex items-center mt-1 text-sm text-gray-300">
+                            <span id="focus-channel"></span>
+                            <span class="mx-2">•</span>
+                            <span id="focus-date"></span>
+                        </div>
+                    </div>
+                    <button id="close-focus" 
+                            class="text-white hover:text-gray-300 p-2 rounded-full hover:bg-white hover:bg-opacity-10 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+                
+                <!-- Video Container -->
+                <div class="flex-1 flex items-center justify-center p-4">
+                    <div class="w-full max-w-5xl aspect-video">
+                        <iframe id="focus-frame"
+                                class="w-full h-full rounded-lg"
+                                frameborder="0"
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                allowfullscreen>
+                        </iframe>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Scripts -->
+    <script type="module">
+        import app from './app.js';
+        window.app = app;
+    </script>
 </body>
 </html>

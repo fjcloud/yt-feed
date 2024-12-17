@@ -273,7 +273,6 @@ function displayFollowedChannels(channels) {
     `).join('');
 }
 
-// Video management
 async function fetchLatestVideos() {
     if (!apiKey) {
         showError('Please configure your API key first');
@@ -292,19 +291,44 @@ async function fetchLatestVideos() {
     try {
         for (const channelId of followedChannelIds) {
             try {
-                const response = await fetch(
-                    `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&order=date&maxResults=5&type=video&key=${apiKey}`
+                // Fetch medium videos (4-20 minutes)
+                const mediumResponse = await fetch(
+                    `https://www.googleapis.com/youtube/v3/search?part=snippet` +
+                    `&channelId=${channelId}` +
+                    `&order=date` +
+                    `&maxResults=5` +
+                    `&type=video` +
+                    `&videoDuration=medium` +
+                    `&key=${apiKey}`
                 );
-                const data = await response.json();
 
-                if (data.error) {
-                    errors.push(`Channel ${channelId}: ${data.error.message}`);
-                    continue;
+                const mediumData = await mediumResponse.json();
+
+                // Fetch long videos (>20 minutes)
+                const longResponse = await fetch(
+                    `https://www.googleapis.com/youtube/v3/search?part=snippet` +
+                    `&channelId=${channelId}` +
+                    `&order=date` +
+                    `&maxResults=5` +
+                    `&type=video` +
+                    `&videoDuration=long` +
+                    `&key=${apiKey}`
+                );
+
+                const longData = await longResponse.json();
+
+                if (mediumData.error) {
+                    errors.push(`Channel ${channelId} (medium): ${mediumData.error.message}`);
                 }
 
-                if (data.items) {
-                    allVideos.push(...data.items);
+                if (longData.error) {
+                    errors.push(`Channel ${channelId} (long): ${longData.error.message}`);
                 }
+
+                // Combine results
+                if (mediumData.items) allVideos.push(...mediumData.items);
+                if (longData.items) allVideos.push(...longData.items);
+
             } catch (error) {
                 errors.push(`Channel ${channelId}: ${error.message}`);
             }
@@ -315,7 +339,7 @@ async function fetchLatestVideos() {
         }
 
         if (allVideos.length > 0) {
-            allVideos.sort((a, b) => 
+            allVideos.sort((a, b) =>
                 new Date(b.snippet.publishedAt) - new Date(a.snippet.publishedAt)
             );
             displayVideos(allVideos);

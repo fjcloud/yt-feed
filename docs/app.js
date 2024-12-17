@@ -1,23 +1,22 @@
 // Application state
 let followedChannelIds = [];
-let channelsData = {};
 let apiKey = '';
 let isLoading = false;
 let watchedVideos = new Set();
 
-// Constants
-const DAYS_TO_STORE = 365;
-const COOKIE_NAMES = {
-    API_KEY: 'youtube_api_key',
-    CHANNEL_IDS: 'channel_ids',
-    WATCHED_VIDEOS: 'watched_videos'
+// Storage constants (persistent)
+const STORAGE_KEYS = {
+    API_KEY: 'youtube_api_key',        // Never expires
+    CHANNEL_IDS: 'channel_ids',        // Never expires
+    WATCHED_VIDEOS: 'watched_videos'    // Never expires
 };
 
-// Page sections
-const VIEWS = {
-    DASHBOARD: 'dashboard',
-    SETTINGS: 'settings'
+// Cache constants (temporary)
+const CACHE_KEYS = {
+    FEED: 'feed_cache',                // Expires after 1 hour
+    TIMESTAMP: 'feed_cache_timestamp'  // Expires after 1 hour
 };
+const CACHE_DURATION = 60 * 60 * 1000; // 1 hour in milliseconds
 
 // Initialize application
 document.addEventListener('DOMContentLoaded', () => {
@@ -26,70 +25,104 @@ document.addEventListener('DOMContentLoaded', () => {
     checkAndSetView();
 });
 
-// Setup event listeners
+// Event Listeners
 function setupEventListeners() {
-    // Search on Enter key
     document.getElementById('searchInput')?.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') searchChannels();
     });
 
-    // Navigation
     document.querySelectorAll('[data-view]').forEach(element => {
         element.addEventListener('click', (e) => {
             e.preventDefault();
             switchView(e.target.dataset.view);
         });
     });
+
+    document.getElementById('refreshFeed')?.addEventListener('click', () => {
+        clearFeedCache();
+        fetchLatestVideos(true);
+    });
 }
 
-// View management
+// View Management
 function checkAndSetView() {
-    const view = new URLSearchParams(window.location.search).get('view') || VIEWS.DASHBOARD;
+    const view = new URLSearchParams(window.location.search).get('view') || 'dashboard';
     switchView(view);
 }
 
 function switchView(view) {
-    // Hide all sections
     document.querySelectorAll('.view-section').forEach(section => {
         section.style.display = 'none';
     });
 
-    // Show selected section
     const selectedSection = document.getElementById(view);
     if (selectedSection) {
         selectedSection.style.display = 'block';
     }
 
-    // Update URL without reload
     const url = new URL(window.location);
     url.searchParams.set('view', view);
     window.history.pushState({}, '', url);
 
-    // If dashboard is shown, fetch videos
-    if (view === VIEWS.DASHBOARD) {
+    if (view === 'dashboard') {
         fetchLatestVideos();
+    } else if (view === 'settings') {
+        displayFollowedChannels();
     }
 }
 
-// Storage functions
+// Cache Management
+function getFeedCache() {
+    try {
+        const cache = localStorage.getItem(CACHE_KEYS.FEED);
+        const timestamp = localStorage.getItem(CACHE_KEYS.TIMESTAMP);
+        
+        if (!cache || !timestamp) return null;
+
+        const now = Date.now();
+        if (now - parseInt(timestamp) > CACHE_DURATION) {
+            clearFeedCache();
+            return null;
+        }
+
+        return JSON.parse(cache);
+    } catch (error) {
+        console.error('Error reading cache:', error);
+        return null;
+    }
+}
+
+function setFeedCache(videos) {
+    try {
+        localStorage.setItem(CACHE_KEYS.FEED, JSON.stringify(videos));
+        localStorage.setItem(CACHE_KEYS.TIMESTAMP, Date.now().toString());
+    } catch (error) {
+        console.error('Error setting cache:', error);
+    }
+}
+
+function clearFeedCache() {
+    localStorage.removeItem(CACHE_KEYS.FEED);
+    localStorage.removeItem(CACHE_KEYS.TIMESTAMP);
+}
+
+// Storage Management
 function loadStoredData() {
-    // Load API key
-    apiKey = getCookie(COOKIE_NAMES.API_KEY) || '';
+    // Load persistent data
+    apiKey = localStorage.getItem(STORAGE_KEYS.API_KEY) || '';
     if (apiKey) {
         document.getElementById('apiKey').value = apiKey;
     }
 
-    // Load channel IDs
-    const savedChannels = getCookie(COOKIE_NAMES.CHANNEL_IDS);
+    const savedChannels = localStorage.getItem(STORAGE_KEYS.CHANNEL_IDS);
     if (savedChannels) {
-        followedChannelIds = savedChannels.split(',');
-        refreshChannelsData();
+        followedChannelIds = JSON.parse(savedChannels);
+        displayFollowedChannels();
     }
 
-    // Load watched videos
-    const savedWatched = getCookie(COOKIE_NAMES.WATCHED_VIDEOS);
+    const savedWatched = localStorage.getItem(STORAGE_KEYS.WATCHED_VIDEOS);
     if (savedWatched) {
-        watchedVideos = new Set(savedWatched.split(','));
+        watchedVideos = new Set(JSON.parse(savedWatched));
     }
 }
 
@@ -101,29 +134,11 @@ function saveApiKey() {
     }
     
     apiKey = newApiKey;
-    setCookie(COOKIE_NAMES.API_KEY, apiKey, DAYS_TO_STORE);
+    localStorage.setItem(STORAGE_KEYS.API_KEY, apiKey);
     showError('API key saved successfully!', 3000);
 }
 
-// Cookie management
-function setCookie(name, value, days) {
-    const date = new Date();
-    date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
-    document.cookie = `${name}=${value};expires=${date.toUTCString()};path=/`;
-}
-
-function getCookie(name) {
-    const nameEQ = name + "=";
-    const ca = document.cookie.split(';');
-    for(let i = 0; i < ca.length; i++) {
-        let c = ca[i];
-        while (c.charAt(0) === ' ') c = c.substring(1, c.length);
-        if (c.indexOf(nameEQ) === 0) return c.substring(nameEQ.length, c.length);
-    }
-    return null;
-}
-
-// UI feedback
+// UI Feedback
 function showError(message, duration = 5000) {
     const container = document.querySelector('.container');
     const existingError = container.querySelector('.error');
@@ -148,7 +163,7 @@ function setLoading(loading) {
     });
 }
 
-// Channel management
+// Channel Management
 async function searchChannels() {
     if (!apiKey) {
         showError('Please configure your API key first');
@@ -180,28 +195,6 @@ async function searchChannels() {
     }
 }
 
-function displaySearchResults(channels) {
-    const searchResults = document.getElementById('searchResults');
-    searchResults.innerHTML = channels.map(channel => {
-        const isFollowed = followedChannelIds.includes(channel.id.channelId);
-        return `
-            <div class="channel-item">
-                <img src="${channel.snippet.thumbnails.default.url}" 
-                     alt="${channel.snippet.title}" 
-                     style="width: 50px; height: 50px; border-radius: 50%;">
-                <div class="channel-info">
-                    <h3>${channel.snippet.title}</h3>
-                    <button onclick="followChannel('${channel.id.channelId}')" 
-                            ${isFollowed ? 'disabled' : ''}>
-                        ${isFollowed ? 'Already following' : 'Follow'}
-                    </button>
-                </div>
-            </div>
-        `;
-    }).join('');
-}
-
-// Channel management
 function followChannel(channelId) {
     if (followedChannelIds.includes(channelId)) {
         showError('Already following this channel');
@@ -209,20 +202,24 @@ function followChannel(channelId) {
     }
 
     followedChannelIds.push(channelId);
-    setCookie(COOKIE_NAMES.CHANNEL_IDS, followedChannelIds.join(','), DAYS_TO_STORE);
-    refreshChannelsData();
+    localStorage.setItem(STORAGE_KEYS.CHANNEL_IDS, JSON.stringify(followedChannelIds));
+    clearFeedCache();
+    displayFollowedChannels();
+    showError('Channel added successfully!', 3000);
 }
 
 function unfollowChannel(channelId) {
     followedChannelIds = followedChannelIds.filter(id => id !== channelId);
-    setCookie(COOKIE_NAMES.CHANNEL_IDS, followedChannelIds.join(','), DAYS_TO_STORE);
-    refreshChannelsData();
+    localStorage.setItem(STORAGE_KEYS.CHANNEL_IDS, JSON.stringify(followedChannelIds));
+    clearFeedCache();
+    displayFollowedChannels();
 }
 
-// Channel data management
-async function refreshChannelsData() {
-    if (!apiKey || followedChannelIds.length === 0) {
-        displayFollowedChannels([]);
+async function displayFollowedChannels() {
+    const followedChannelsDiv = document.getElementById('followedChannels');
+    
+    if (followedChannelIds.length === 0) {
+        followedChannelsDiv.innerHTML = '<p class="no-content">No channels followed</p>';
         return;
     }
 
@@ -237,43 +234,30 @@ async function refreshChannelsData() {
             throw new Error(data.error.message);
         }
 
-        channelsData = {};
-        data.items.forEach(channel => {
-            channelsData[channel.id] = channel;
-        });
-
-        displayFollowedChannels(data.items);
+        followedChannelsDiv.innerHTML = data.items.map(channel => `
+            <div class="channel-item">
+                <img src="${channel.snippet.thumbnails.default.url}" 
+                     alt="${channel.snippet.title}" 
+                     style="width: 50px; height: 50px; border-radius: 50%;">
+                <div class="channel-info">
+                    <h3>${channel.snippet.title}</h3>
+                    <button onclick="unfollowChannel('${channel.id}')" 
+                            style="background: #dc3545;">
+                        Unfollow
+                    </button>
+                </div>
+            </div>
+        `).join('');
     } catch (error) {
-        showError(`Error: ${error.message}`);
+        showError(`Error loading channels: ${error.message}`);
+        followedChannelsDiv.innerHTML = '<p class="error">Error loading channels</p>';
     } finally {
         setLoading(false);
     }
 }
 
-function displayFollowedChannels(channels) {
-    const followedChannelsDiv = document.getElementById('followedChannels');
-    if (channels.length === 0) {
-        followedChannelsDiv.innerHTML = '<p class="no-content">No channels followed</p>';
-        return;
-    }
-
-    followedChannelsDiv.innerHTML = channels.map(channel => `
-        <div class="channel-item">
-            <img src="${channel.snippet.thumbnails.default.url}" 
-                 alt="${channel.snippet.title}" 
-                 style="width: 50px; height: 50px; border-radius: 50%;">
-            <div class="channel-info">
-                <h3>${channel.snippet.title}</h3>
-                <button onclick="unfollowChannel('${channel.id}')" 
-                        style="background: #dc3545;">
-                    Unfollow
-                </button>
-            </div>
-        </div>
-    `).join('');
-}
-
-async function fetchLatestVideos() {
+// Video Management
+async function fetchLatestVideos(forceRefresh = false) {
     if (!apiKey) {
         showError('Please configure your API key first');
         return;
@@ -282,6 +266,14 @@ async function fetchLatestVideos() {
     if (followedChannelIds.length === 0) {
         showError('No channels followed');
         return;
+    }
+
+    if (!forceRefresh) {
+        const cachedVideos = getFeedCache();
+        if (cachedVideos) {
+            displayVideos(cachedVideos);
+            return;
+        }
     }
 
     setLoading(true);
@@ -301,7 +293,7 @@ async function fetchLatestVideos() {
                     `&videoDuration=medium` +
                     `&key=${apiKey}`
                 );
-
+                
                 const mediumData = await mediumResponse.json();
 
                 // Fetch long videos (>20 minutes)
@@ -325,7 +317,6 @@ async function fetchLatestVideos() {
                     errors.push(`Channel ${channelId} (long): ${longData.error.message}`);
                 }
 
-                // Combine results
                 if (mediumData.items) allVideos.push(...mediumData.items);
                 if (longData.items) allVideos.push(...longData.items);
 
@@ -339,9 +330,10 @@ async function fetchLatestVideos() {
         }
 
         if (allVideos.length > 0) {
-            allVideos.sort((a, b) =>
+            allVideos.sort((a, b) => 
                 new Date(b.snippet.publishedAt) - new Date(a.snippet.publishedAt)
             );
+            setFeedCache(allVideos);
             displayVideos(allVideos);
         } else {
             showError('No videos found');
@@ -355,7 +347,33 @@ async function fetchLatestVideos() {
 
 function markVideoAsWatched(videoId) {
     watchedVideos.add(videoId);
-    setCookie(COOKIE_NAMES.WATCHED_VIDEOS, Array.from(watchedVideos).join(','), DAYS_TO_STORE);
+    localStorage.setItem(STORAGE_KEYS.WATCHED_VIDEOS, JSON.stringify([...watchedVideos]));
+    const videoElement = document.querySelector(`[data-video-id="${videoId}"]`);
+    if (videoElement) {
+        videoElement.classList.add('watched');
+    }
+}
+
+// Display Functions
+function displaySearchResults(channels) {
+    const searchResults = document.getElementById('searchResults');
+    searchResults.innerHTML = channels.map(channel => {
+        const isFollowed = followedChannelIds.includes(channel.id.channelId);
+        return `
+            <div class="channel-item">
+                <img src="${channel.snippet.thumbnails.default.url}" 
+                     alt="${channel.snippet.title}" 
+                     style="width: 50px; height: 50px; border-radius: 50%;">
+                <div class="channel-info">
+                    <h3>${channel.snippet.title}</h3>
+                    <button onclick="followChannel('${channel.id.channelId}')" 
+                            ${isFollowed ? 'disabled' : ''}>
+                        ${isFollowed ? 'Already following' : 'Follow'}
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
 }
 
 function displayVideos(videos) {
@@ -364,8 +382,9 @@ function displayVideos(videos) {
         const isWatched = watchedVideos.has(video.id.videoId);
         return `
             <div class="video-item ${isWatched ? 'watched' : ''}" 
+                 data-video-id="${video.id.videoId}"
                  onclick="handleVideoClick('${video.id.videoId}')" 
-                 style="cursor: pointer; opacity: ${isWatched ? '0.7' : '1'}">
+                 style="cursor: pointer;">
                 <img src="${video.snippet.thumbnails.medium.url}" 
                      alt="${video.snippet.title}">
                 <h3>${video.snippet.title}</h3>
@@ -375,6 +394,12 @@ function displayVideos(videos) {
             </div>
         `;
     }).join('');
+
+    const cacheTimestamp = localStorage.getItem(CACHE_KEYS.TIMESTAMP);
+    if (cacheTimestamp) {
+        const date = new Date(parseInt(cacheTimestamp));
+        document.getElementById('lastUpdate').textContent = `Last updated: ${date.toLocaleString()}`;
+    }
 }
 
 function handleVideoClick(videoId) {

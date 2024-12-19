@@ -1,6 +1,5 @@
 // List of CORS proxies to cycle through
 const CORS_PROXIES = [
-    'https://api.allorigins.win/raw?url=',
     'https://api.codetabs.com/v1/proxy?quest=',
     'https://cors-anywhere.herokuapp.com/',
     'https://crossorigin.me/'

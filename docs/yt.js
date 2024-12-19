@@ -27,14 +27,6 @@ class YouTubeFetcher {
         // Check for hashtags - must start with # followed by word characters
         const hasHashtag = /#\w+/.test(safeTitle);
         
-        // Always log for debugging
-        console.log('🔍 Checking video:', { 
-            title: safeTitle, 
-            hasEmoji: containsEmoji, 
-            hasHashtag: hasHashtag,
-            isShort: containsEmoji || hasHashtag
-        });
-        
         return containsEmoji || hasHashtag;
     }
 
@@ -92,7 +84,6 @@ class YouTubeFetcher {
                     }
                 }
             } catch (e) {
-                console.error('Error parsing channel data:', e);
             }
 
             return results;

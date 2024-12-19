@@ -21,24 +21,21 @@ class YouTubeFetcher {
         // Convert title to a string that we can safely work with
         const safeTitle = String(title);
         
-        // More direct emoji detection using a simpler approach
-        const containsEmoji = /\p{Emoji}/u.test(safeTitle);
+        // More precise emoji detection that excludes punctuation
+        const containsEmoji = /[\u{1F000}-\u{1F6FF}\u{1F900}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F300}-\u{1F64F}]/u.test(safeTitle);
         
-        // Check for hashtags
-        const hasHashtag = /#[\w]+/.test(safeTitle);
+        // Check for hashtags - must start with # followed by word characters
+        const hasHashtag = /#\w+/.test(safeTitle);
         
-        // Check for common shorts indicators
-        const shortsIndicators = [
-            '#shorts',
-            '#short',
-            '#ytshorts',
-            '#youtubeshorts',
-            '🎥',
-            '📱',
-            '⚡️'
-        ].some(indicator => safeTitle.toLowerCase().includes(indicator.toLowerCase()));
+        // Always log for debugging
+        console.log('🔍 Checking video:', { 
+            title: safeTitle, 
+            hasEmoji: containsEmoji, 
+            hasHashtag: hasHashtag,
+            isShort: containsEmoji || hasHashtag
+        });
         
-        return containsEmoji || hasHashtag || shortsIndicators;
+        return containsEmoji || hasHashtag;
     }
 
     // Extract channel ID from various YouTube URL formats
@@ -141,6 +138,8 @@ class YouTubeFetcher {
             const parser = new DOMParser();
             const xmlDoc = parser.parseFromString(response, 'text/xml');
             
+            console.log('📊 Total entries before filtering:', xmlDoc.getElementsByTagName('entry').length);
+            
             // Extract video information
             const entries = xmlDoc.getElementsByTagName('entry');
             let videos = Array.from(entries).map(entry => {
@@ -163,7 +162,13 @@ class YouTubeFetcher {
 
             // Filter out shorts if requested
             if (filterShorts) {
-                videos = videos.filter(video => !video.isShort);
+                const filteredVideos = videos.filter(video => !video.isShort);
+                console.log('📊 Videos after filtering:', {
+                    total: videos.length,
+                    filtered: videos.length - filteredVideos.length,
+                    remaining: filteredVideos.length
+                });
+                videos = filteredVideos;
             }
 
             return videos;

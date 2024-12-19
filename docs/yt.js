@@ -16,6 +16,31 @@ class YouTubeFetcher {
         return CORS_PROXIES[this.currentProxyIndex];
     }
 
+    // Check if a video is likely a short based on title characteristics
+    isLikelyShort(title) {
+        // Convert title to a string that we can safely work with
+        const safeTitle = String(title);
+        
+        // More direct emoji detection using a simpler approach
+        const containsEmoji = /\p{Emoji}/u.test(safeTitle);
+        
+        // Check for hashtags
+        const hasHashtag = /#[\w]+/.test(safeTitle);
+        
+        // Check for common shorts indicators
+        const shortsIndicators = [
+            '#shorts',
+            '#short',
+            '#ytshorts',
+            '#youtubeshorts',
+            '🎥',
+            '📱',
+            '⚡️'
+        ].some(indicator => safeTitle.toLowerCase().includes(indicator.toLowerCase()));
+        
+        return containsEmoji || hasHashtag || shortsIndicators;
+    }
+
     // Extract channel ID from various YouTube URL formats
     extractChannelId(url) {
         const patterns = {
@@ -33,41 +58,6 @@ class YouTubeFetcher {
         }
 
         return null;
-    }
-
-    // Search for a channel and return basic info
-    async searchChannel(query) {
-        try {
-            // Check if the query is a URL
-            if (query.includes('youtube.com')) {
-                const extractedInfo = this.extractChannelId(query);
-                if (extractedInfo) {
-                    if (extractedInfo.type === 'channelId') {
-                        // Direct channel ID, we can use it directly
-                        const channelInfo = await this.getChannelInfo(extractedInfo.value);
-                        return channelInfo;
-                    } else {
-                        // Custom URL or handle, need to fetch the page to get channel ID
-                        const channelPage = await this.makeProxiedRequest(query);
-                        const channelId = this.extractChannelIdFromPage(channelPage);
-                        if (channelId) {
-                            return await this.getChannelInfo(channelId);
-                        }
-                    }
-                }
-            }
-
-            // If not a URL or URL processing failed, perform a search
-            const searchResults = await this.performChannelSearch(query);
-            if (searchResults.length > 0) {
-                return searchResults[0];
-            }
-
-            throw new Error('Channel not found');
-        } catch (error) {
-            console.error('Error searching for channel:', error);
-            throw error;
-        }
     }
 
     // Perform a channel search and return multiple results
@@ -142,7 +132,7 @@ class YouTubeFetcher {
     }
 
     // Get channel feed using RSS
-    async getChannelFeed(channelId) {
+    async getChannelFeed(channelId, filterShorts = true) {
         try {
             const feedUrl = `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`;
             const response = await this.makeProxiedRequest(feedUrl);
@@ -153,21 +143,28 @@ class YouTubeFetcher {
             
             // Extract video information
             const entries = xmlDoc.getElementsByTagName('entry');
-            const videos = Array.from(entries).map(entry => {
+            let videos = Array.from(entries).map(entry => {
                 const videoId = entry.getElementsByTagName('yt:videoId')[0]?.textContent;
                 const title = entry.getElementsByTagName('title')[0]?.textContent;
                 const publishedDate = entry.getElementsByTagName('published')[0]?.textContent;
                 const thumbnail = `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`;
                 const link = `https://www.youtube.com/watch?v=${videoId}`;
+                const isShort = this.isLikelyShort(title);
                 
                 return {
                     videoId,
                     title,
                     publishedDate: new Date(publishedDate),
                     thumbnail,
-                    link
+                    link,
+                    isShort
                 };
             });
+
+            // Filter out shorts if requested
+            if (filterShorts) {
+                videos = videos.filter(video => !video.isShort);
+            }
 
             return videos;
         } catch (error) {

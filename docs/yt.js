@@ -1,8 +1,6 @@
 // List of CORS proxies to cycle through
 const CORS_PROXIES = [
-    'https://api.codetabs.com/v1/proxy?quest=',
-    'https://cors-anywhere.herokuapp.com/',
-    'https://crossorigin.me/'
+    'https://corsproxy.io/?url='
 ];
 
 class YouTubeFetcher {
@@ -12,8 +10,8 @@ class YouTubeFetcher {
 
     // Get next proxy from the list
     getNextProxy() {
-        this.currentProxyIndex = (this.currentProxyIndex + 1) % CORS_PROXIES.length;
-        return CORS_PROXIES[this.currentProxyIndex];
+        // Since there's only one proxy, always return it
+        return CORS_PROXIES[0];
     }
 
     // Check if a video is likely a short based on title characteristics

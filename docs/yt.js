@@ -50,7 +50,8 @@ class YouTubeFetcher {
     // Perform a channel search and return multiple results
     async performChannelSearch(query) {
         const encodedQuery = encodeURIComponent(query);
-        const searchUrl = `https://www.youtube.com/results?search_query=${encodedQuery}&sp=EgIQAg%253D%253D`;
+        // Force desktop version with explicit parameters
+        const searchUrl = `https://www.youtube.com/results?search_query=${encodedQuery}&sp=EgIQAg%253D%253D&app=desktop&persist_app=1`;
         
         try {
             const response = await this.makeProxiedRequest(searchUrl);
@@ -79,6 +80,9 @@ class YouTubeFetcher {
                             thumbnailUrl: item.channelRenderer.thumbnail?.thumbnails[0]?.url || null
                         };
                         results.push(channelInfo);
+                        
+                        // Limit to first 10 channels
+                        if (results.length >= 10) break;
                     }
                 }
             } catch (e) {
@@ -171,6 +175,7 @@ class YouTubeFetcher {
     async makeProxiedRequest(url, retryCount = 0) {
         try {
             const proxy = CORS_PROXIES[this.currentProxyIndex];
+            
             const response = await fetch(proxy + encodeURIComponent(url));
             
             if (!response.ok) {

@@ -1,4 +1,4 @@
-const CORS_PROXY = 'https://corsproxy.io/?url=';
+const CORS_PROXY = 'https://corsproxy.io/?';
 
 class YouTubeFetcher {
     // Check if a video is likely a short (has emojis or hashtags)
@@ -61,7 +61,7 @@ class YouTubeFetcher {
 
     // Make request using CORS proxy
     async makeProxiedRequest(url) {
-        const response = await fetch(CORS_PROXY + encodeURIComponent(url));
+        const response = await fetch(CORS_PROXY + url);
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         return await response.text();
     }

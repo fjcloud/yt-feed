@@ -80,12 +80,11 @@ class YouTubeApp {
             return;
         }
 
-        this.searchResults.innerHTML = results.map(channel => `
+        this.searchResults.innerHTML = results.map((channel, index) => `
             <div class="channel-result p-4 hover:bg-gray-50 cursor-pointer flex items-center gap-4">
-                ${channel.thumbnailUrl ? 
-                    `<img src="${channel.thumbnailUrl}" alt="${channel.channelName}" class="w-12 h-12 rounded-full">` :
-                    '<div class="w-12 h-12 rounded-full bg-gray-200"></div>'
-                }
+                <div class="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center">
+                    <span class="text-gray-500 text-xs">YT</span>
+                </div>
                 <div class="flex-1">
                     <div class="font-medium">${channel.channelName}</div>
                     <div class="text-sm text-gray-500">${channel.subscriberCount}</div>

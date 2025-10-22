@@ -8,7 +8,7 @@ class YouTubeFetcher {
 
     // Perform a channel search and return multiple results
     async performChannelSearch(query) {
-        const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}&sp=EgIQAg%253D%253D`;
+        const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}&sp=EgIQAg%253D%253D&app=desktop&persist_app=1`;
         const response = await this.makeProxiedRequest(searchUrl);
         
         const dataMatch = response.match(/var ytInitialData = ({.*?});/);
@@ -29,6 +29,9 @@ class YouTubeFetcher {
                         subscriberCount: item.channelRenderer.subscriberCountText?.simpleText || 'N/A',
                         thumbnailUrl: item.channelRenderer.thumbnail?.thumbnails[0]?.url || null
                     });
+                    
+                    // Limit to first 10 channels
+                    if (results.length >= 10) break;
                 }
             }
         } catch (e) {}

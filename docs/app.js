@@ -6,8 +6,6 @@ class YouTubeApp {
         this.channels = this.loadChannels();
         this.videos = [];
         this.currentView = 'dashboard';
-        this.searchResults = [];
-        this.isSearching = false;
         
         this.initializeElements();
         this.initializeEventListeners();
@@ -68,15 +66,11 @@ class YouTubeApp {
 
     async searchChannels(query) {
         try {
-            this.isSearching = true;
             this.searchResults.innerHTML = '<div class="loading">Searching...</div>';
-            
             const results = await this.ytFetcher.performChannelSearch(query);
             this.renderSearchResults(results);
         } catch (error) {
             this.searchResults.innerHTML = `<div class="error">Error: ${error.message}</div>`;
-        } finally {
-            this.isSearching = false;
         }
     }
 

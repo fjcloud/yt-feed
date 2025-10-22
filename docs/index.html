@@ -123,41 +123,6 @@
                 </div>
             </div>
         </div>
-
-        <!-- Focus Mode View -->
-        <div id="focus-view" class="hidden fixed inset-0 bg-black bg-opacity-90 z-50">
-            <div class="h-full flex flex-col">
-                <!-- Video Header -->
-                <div class="bg-black bg-opacity-50 p-4 flex items-center justify-between">
-                    <div class="text-white">
-                        <h2 id="focus-title" class="text-xl font-medium"></h2>
-                        <div class="flex items-center mt-1 text-sm text-gray-300">
-                            <span id="focus-channel"></span>
-                            <span class="mx-2">•</span>
-                            <span id="focus-date"></span>
-                        </div>
-                    </div>
-                    <button id="close-focus" 
-                            class="text-white hover:text-gray-300 p-2 rounded-full hover:bg-white hover:bg-opacity-10 transition-colors">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                    </button>
-                </div>
-                
-                <!-- Video Container -->
-                <div class="flex-1 flex items-center justify-center p-4">
-                    <div class="w-full max-w-5xl aspect-video">
-                        <iframe id="focus-frame"
-                                class="w-full h-full rounded-lg"
-                                frameborder="0"
-                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                allowfullscreen>
-                        </iframe>
-                    </div>
-                </div>
-            </div>
-        </div>
     </main>
 
     <!-- Scripts -->

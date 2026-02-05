@@ -4,3 +4,10 @@ compatibility_date = "2024-01-01"
 
 [vars]
 ALLOWED_ORIGINS = "https://yt.msl.cloud"
+
+# Optional: KV namespace for rate limiting
+# Create with: wrangler kv:namespace create "RATE_LIMIT_KV"
+# Then uncomment and add the ID below:
+# [[kv_namespaces]]
+# binding = "RATE_LIMIT_KV"
+# id = "your-kv-namespace-id"

@@ -7,43 +7,17 @@ class YouTubeFetcher {
         return /[\u{1F000}-\u{1F6FF}\u{1F900}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F300}-\u{1F64F}]/u.test(title) || /#\w+/.test(title);
     }
 
-    // Perform a channel search and return multiple results
+    // Perform a channel search - returns JSON from worker
     async performChannelSearch(query) {
         const response = await fetch(`${WORKER_URL}?search=${encodeURIComponent(query)}`);
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        
-        const html = await response.text();
-        const dataMatch = html.match(/var ytInitialData = ({.*?});/);
-        if (!dataMatch) throw new Error('Could not parse search results');
-
-        const data = JSON.parse(dataMatch[1]);
-        const results = [];
-
-        try {
-            const items = data.contents.twoColumnSearchResultsRenderer
-                .primaryContents.sectionListRenderer.contents[0].itemSectionRenderer.contents;
-
-            for (const item of items) {
-                if (item.channelRenderer) {
-                    results.push({
-                        channelId: item.channelRenderer.channelId,
-                        channelName: item.channelRenderer.title.simpleText,
-                        subscriberCount: item.channelRenderer.subscriberCountText?.simpleText || 'N/A',
-                        thumbnailUrl: item.channelRenderer.thumbnail?.thumbnails[0]?.url || null
-                    });
-                    
-                    if (results.length >= 10) break;
-                }
-            }
-        } catch (e) {}
-
-        return results;
+        if (!response.ok) throw new Error(`Search failed: ${response.status}`);
+        return await response.json();
     }
 
     // Get channel feed using RSS via worker
     async getChannelFeed(channelId, filterShorts = true) {
         const response = await fetch(`${WORKER_URL}?channelId=${channelId}`);
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        if (!response.ok) throw new Error(`Feed failed: ${response.status}`);
         
         const xml = await response.text();
         const xmlDoc = new DOMParser().parseFromString(xml, 'text/xml');

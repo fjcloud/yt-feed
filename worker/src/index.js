@@ -1,28 +1,21 @@
 /**
  * Cloudflare Worker - CORS Proxy for YouTube feeds
- * Only allows requests from yt.msl.cloud
+ * Configuration via wrangler.toml [vars]
  */
-
-const ALLOWED_ORIGINS = [
-  'https://yt.msl.cloud',
-  'http://localhost:8080', // For local development
-  'http://127.0.0.1:8080'
-];
 
 export default {
   async fetch(request, env, ctx) {
+    const allowedOrigins = (env.ALLOWED_ORIGINS || '').split(',').map(o => o.trim());
+    
     // Handle CORS preflight
     if (request.method === 'OPTIONS') {
-      return handleCORS(request);
+      return handleCORS(request, allowedOrigins);
     }
 
     const origin = request.headers.get('Origin');
+    const isAllowed = !origin || allowedOrigins.includes(origin);
     
-    // Check if origin is allowed
-    const allowedOrigin = env.ALLOWED_ORIGIN || 'https://yt.msl.cloud';
-    const isAllowed = ALLOWED_ORIGINS.includes(origin) || origin === allowedOrigin;
-    
-    if (!isAllowed && origin) {
+    if (!isAllowed) {
       return new Response('Forbidden: Origin not allowed', {
         status: 403,
         headers: { 'Content-Type': 'text/plain' }
@@ -36,7 +29,7 @@ export default {
     if (!targetUrl) {
       return new Response('Missing "url" query parameter', {
         status: 400,
-        headers: getCORSHeaders(origin || allowedOrigin)
+        headers: getCORSHeaders(origin || allowedOrigins[0])
       });
     }
 
@@ -47,13 +40,13 @@ export default {
       if (!allowedHosts.some(host => target.hostname === host || target.hostname.endsWith('.' + host))) {
         return new Response('Only YouTube URLs are allowed', {
           status: 403,
-          headers: getCORSHeaders(origin || allowedOrigin)
+          headers: getCORSHeaders(origin || allowedOrigins[0])
         });
       }
     } catch (e) {
       return new Response('Invalid URL', {
         status: 400,
-        headers: getCORSHeaders(origin || allowedOrigin)
+        headers: getCORSHeaders(origin || allowedOrigins[0])
       });
     }
 
@@ -67,21 +60,19 @@ export default {
         }
       });
 
-      // Get the response body
       const body = await response.text();
 
-      // Return with CORS headers
       return new Response(body, {
         status: response.status,
         headers: {
-          ...getCORSHeaders(origin || allowedOrigin),
+          ...getCORSHeaders(origin || allowedOrigins[0]),
           'Content-Type': response.headers.get('Content-Type') || 'text/plain',
         }
       });
     } catch (error) {
       return new Response(`Proxy error: ${error.message}`, {
         status: 500,
-        headers: getCORSHeaders(origin || allowedOrigin)
+        headers: getCORSHeaders(origin || allowedOrigins[0])
       });
     }
   }
@@ -96,9 +87,9 @@ function getCORSHeaders(origin) {
   };
 }
 
-function handleCORS(request) {
+function handleCORS(request, allowedOrigins) {
   const origin = request.headers.get('Origin');
-  const allowedOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : 'https://yt.msl.cloud';
+  const allowedOrigin = allowedOrigins.includes(origin) ? origin : allowedOrigins[0];
   
   return new Response(null, {
     status: 204,

@@ -3,4 +3,5 @@ main = "src/index.js"
 compatibility_date = "2024-01-01"
 
 [vars]
-ALLOWED_ORIGIN = "https://yt.msl.cloud"
+# Comma-separated list of allowed origins
+ALLOWED_ORIGINS = "https://yt.msl.cloud,http://localhost:8080,http://127.0.0.1:8080"

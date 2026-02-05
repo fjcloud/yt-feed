@@ -1,4 +1,4 @@
-// Cloudflare Worker CORS Proxy URL
+// Cloudflare Worker API URL
 const WORKER_URL = 'https://yt-feed-proxy.fj-9d1.workers.dev';
 
 class YouTubeFetcher {
@@ -9,44 +9,45 @@ class YouTubeFetcher {
 
     // Perform a channel search and return multiple results
     async performChannelSearch(query) {
-        const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}&sp=EgIQAg%253D%253D&app=desktop&persist_app=1`;
-        const response = await this.makeProxiedRequest(searchUrl);
+        const response = await fetch(`${WORKER_URL}?search=${encodeURIComponent(query)}`);
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         
-            const dataMatch = response.match(/var ytInitialData = ({.*?});/);
+        const html = await response.text();
+        const dataMatch = html.match(/var ytInitialData = ({.*?});/);
         if (!dataMatch) throw new Error('Could not parse search results');
 
-            const data = JSON.parse(dataMatch[1]);
-            const results = [];
+        const data = JSON.parse(dataMatch[1]);
+        const results = [];
 
-            try {
-                const items = data.contents.twoColumnSearchResultsRenderer
+        try {
+            const items = data.contents.twoColumnSearchResultsRenderer
                 .primaryContents.sectionListRenderer.contents[0].itemSectionRenderer.contents;
 
-                for (const item of items) {
-                    if (item.channelRenderer) {
+            for (const item of items) {
+                if (item.channelRenderer) {
                     results.push({
-                            channelId: item.channelRenderer.channelId,
-                            channelName: item.channelRenderer.title.simpleText,
-                            subscriberCount: item.channelRenderer.subscriberCountText?.simpleText || 'N/A',
-                            thumbnailUrl: item.channelRenderer.thumbnail?.thumbnails[0]?.url || null
+                        channelId: item.channelRenderer.channelId,
+                        channelName: item.channelRenderer.title.simpleText,
+                        subscriberCount: item.channelRenderer.subscriberCountText?.simpleText || 'N/A',
+                        thumbnailUrl: item.channelRenderer.thumbnail?.thumbnails[0]?.url || null
                     });
                     
-                    // Limit to first 10 channels
                     if (results.length >= 10) break;
-                    }
                 }
+            }
         } catch (e) {}
 
-            return results;
+        return results;
     }
 
-    // Get channel feed using RSS
+    // Get channel feed using RSS via worker
     async getChannelFeed(channelId, filterShorts = true) {
-            const feedUrl = `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`;
-            const response = await this.makeProxiedRequest(feedUrl);
-            
-        const xmlDoc = new DOMParser().parseFromString(response, 'text/xml');
-            const entries = xmlDoc.getElementsByTagName('entry');
+        const response = await fetch(`${WORKER_URL}?channelId=${channelId}`);
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        
+        const xml = await response.text();
+        const xmlDoc = new DOMParser().parseFromString(xml, 'text/xml');
+        const entries = xmlDoc.getElementsByTagName('entry');
         
         let videos = Array.from(entries).map(entry => ({
             videoId: entry.getElementsByTagName('yt:videoId')[0]?.textContent,
@@ -58,14 +59,6 @@ class YouTubeFetcher {
         }));
 
         return filterShorts ? videos.filter(v => !v.isShort) : videos;
-    }
-
-    // Make request using Cloudflare Worker CORS proxy
-    async makeProxiedRequest(url) {
-        const proxyUrl = `${WORKER_URL}?url=${encodeURIComponent(url)}`;
-        const response = await fetch(proxyUrl);
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        return await response.text();
     }
 }
 

@@ -1,5 +1,8 @@
 /**
- * Cloudflare Worker - CORS Proxy for YouTube feeds
+ * Cloudflare Worker - YouTube Feed & Search API
+ * Endpoints:
+ *   ?channelId=XXX  → Returns RSS feed for channel
+ *   ?search=XXX     → Searches for YouTube channels
  * Configuration via wrangler.toml [vars]
  */
 
@@ -7,7 +10,6 @@ export default {
   async fetch(request, env, ctx) {
     const allowedOrigins = (env.ALLOWED_ORIGINS || '').split(',').map(o => o.trim());
     
-    // Handle CORS preflight
     if (request.method === 'OPTIONS') {
       return handleCORS(request, allowedOrigins);
     }
@@ -22,61 +24,104 @@ export default {
       });
     }
 
-    // Get the target URL from query parameter
     const url = new URL(request.url);
-    const targetUrl = url.searchParams.get('url');
+    const channelId = url.searchParams.get('channelId');
+    const search = url.searchParams.get('search');
 
-    if (!targetUrl) {
-      return new Response('Missing "url" query parameter', {
-        status: 400,
-        headers: getCORSHeaders(origin || allowedOrigins[0])
-      });
+    const corsHeaders = getCORSHeaders(origin || allowedOrigins[0]);
+
+    // Route: Get channel RSS feed
+    if (channelId) {
+      return handleChannelFeed(channelId, corsHeaders);
     }
 
-    // Validate target URL (only allow YouTube domains)
-    try {
-      const target = new URL(targetUrl);
-      const allowedHosts = ['youtube.com', 'www.youtube.com', 'i.ytimg.com'];
-      if (!allowedHosts.some(host => target.hostname === host || target.hostname.endsWith('.' + host))) {
-        return new Response('Only YouTube URLs are allowed', {
-          status: 403,
-          headers: getCORSHeaders(origin || allowedOrigins[0])
-        });
-      }
-    } catch (e) {
-      return new Response('Invalid URL', {
-        status: 400,
-        headers: getCORSHeaders(origin || allowedOrigins[0])
-      });
+    // Route: Search channels
+    if (search) {
+      return handleChannelSearch(search, corsHeaders);
     }
 
-    try {
-      // Fetch the target URL
-      const response = await fetch(targetUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.5',
-        }
-      });
-
-      const body = await response.text();
-
-      return new Response(body, {
-        status: response.status,
-        headers: {
-          ...getCORSHeaders(origin || allowedOrigins[0]),
-          'Content-Type': response.headers.get('Content-Type') || 'text/plain',
-        }
-      });
-    } catch (error) {
-      return new Response(`Proxy error: ${error.message}`, {
-        status: 500,
-        headers: getCORSHeaders(origin || allowedOrigins[0])
-      });
-    }
+    return new Response('Missing parameter: channelId or search', {
+      status: 400,
+      headers: corsHeaders
+    });
   }
 };
+
+async function handleChannelFeed(channelId, corsHeaders) {
+  // Validate channel ID format (YouTube channel IDs start with UC and are 24 chars)
+  if (!/^UC[\w-]{22}$/.test(channelId)) {
+    return new Response('Invalid channelId format', {
+      status: 400,
+      headers: corsHeaders
+    });
+  }
+
+  try {
+    const feedUrl = `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`;
+    
+    const response = await fetch(feedUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'application/xml, text/xml, */*',
+      }
+    });
+
+    if (!response.ok) {
+      return new Response(`YouTube returned ${response.status}`, {
+        status: response.status,
+        headers: corsHeaders
+      });
+    }
+
+    return new Response(await response.text(), {
+      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/xml' }
+    });
+  } catch (error) {
+    return new Response(`Error: ${error.message}`, {
+      status: 500,
+      headers: corsHeaders
+    });
+  }
+}
+
+async function handleChannelSearch(query, corsHeaders) {
+  if (!query || query.length < 2 || query.length > 100) {
+    return new Response('Invalid search query', {
+      status: 400,
+      headers: corsHeaders
+    });
+  }
+
+  try {
+    const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}&sp=EgIQAg%253D%253D&app=desktop&persist_app=1`;
+    
+    const response = await fetch(searchUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+      }
+    });
+
+    if (!response.ok) {
+      return new Response(`YouTube returned ${response.status}`, {
+        status: response.status,
+        headers: corsHeaders
+      });
+    }
+
+    return new Response(await response.text(), {
+      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'text/html' }
+    });
+  } catch (error) {
+    return new Response(`Error: ${error.message}`, {
+      status: 500,
+      headers: corsHeaders
+    });
+  }
+}
 
 function getCORSHeaders(origin) {
   return {

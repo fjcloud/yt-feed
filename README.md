@@ -20,4 +20,79 @@ A simple dashboard to follow your favorite YouTube channels without algorithmic 
 
 Hosted at: [yt.msl.cloud](https://yt.msl.cloud)
 
+## Architecture
+
+The app uses a Cloudflare Worker as a CORS proxy to fetch YouTube RSS feeds and search results.
+
+```
+┌─────────────┐     ┌────────────────────┐     ┌─────────────┐
+│   Browser   │────▶│ Cloudflare Worker  │────▶│   YouTube   │
+│ (yt.msl.cloud)    │  (CORS Proxy)      │     │   (RSS/API) │
+└─────────────┘     └────────────────────┘     └─────────────┘
+```
+
+## Self-Hosting
+
+### Prerequisites
+
+- Node.js 18+
+- A Cloudflare account (free tier works)
+
+### Deploy the CORS Proxy Worker
+
+1. Navigate to the worker directory:
+   ```bash
+   cd worker
+   npm install
+   ```
+
+2. Login to Cloudflare:
+   ```bash
+   npx wrangler login
+   ```
+
+3. Deploy the worker:
+   ```bash
+   npm run deploy
+   ```
+
+4. Note the worker URL (e.g., `https://yt-feed-proxy.YOUR_SUBDOMAIN.workers.dev`)
+
+5. Update `docs/yt.js` with your worker URL:
+   ```javascript
+   const WORKER_URL = 'https://yt-feed-proxy.YOUR_SUBDOMAIN.workers.dev';
+   ```
+
+6. Update `worker/wrangler.toml` to allow your domain:
+   ```toml
+   [vars]
+   ALLOWED_ORIGIN = "https://your-domain.com"
+   ```
+
+### Host the Frontend
+
+The `docs/` folder contains the static frontend. You can host it on:
+- GitHub Pages
+- Cloudflare Pages
+- Any static hosting service
+
+## Development
+
+### Worker Development
+
+```bash
+cd worker
+npm run dev    # Start local dev server
+npm run deploy # Deploy to Cloudflare
+```
+
+### Frontend Development
+
+Simply serve the `docs/` folder with any static file server:
+```bash
+npx serve docs
+```
+
+---
+
 Take back control of your viewing experience!
